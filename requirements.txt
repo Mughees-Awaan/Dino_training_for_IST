@@ -1,0 +1,80 @@
+# =====================================================================================
+# training/ -- preprocessing pipeline dependencies
+# =====================================================================================
+# Verified against the environment these tables were actually built in:
+#   Python 3.12.13   (conda env "weed")
+#
+# Install:
+#   pip install -r training/requirements.txt
+#
+# SCOPE: this covers training/data, training/runtime and training/tests -- i.e. the
+# preprocessing stage only. training/teacher and training/student are still empty; when
+# they are written they will add torch, onnxruntime-gpu and timm, which have their own
+# CUDA constraints and belong in a SEPARATE lock file. Do not merge them into this one:
+# onnxruntime and onnxruntime-gpu cannot share an environment.
+# =====================================================================================
+
+
+# ---- numpy: HARD FLOOR OF 2.0, DO NOT LOWER -----------------------------------------
+# audit_duplicates.perceptual_groups uses np.bitwise_count, which did not exist before
+# numpy 2.0. It is what makes the near-duplicate search take 4 seconds instead of never
+# finishing: it counts differing bits across a whole array at once, so the pHash
+# comparison runs as ~180 array operations rather than a billion Python loop steps.
+# On numpy 1.x this raises AttributeError at the point of use, not at import.
+numpy==2.5.1
+
+
+# ---- pandas: 3.x, and the code is written FOR 3.x ------------------------------------
+# render_episodes deliberately avoids groupby().apply() because pandas 3 drops the
+# grouping column inside apply() -- which silently removed "dataset" from the sampling
+# and let one large dataset dominate the review set. The explicit loop there is not
+# clumsiness, it is the fix. Downgrading to pandas 2 will not break it, but do not
+# "tidy" that loop back into an apply().
+pandas==3.0.5
+
+
+# ---- pyarrow: not imported anywhere, still required ----------------------------------
+# Ten scripts call .to_parquet() / .read_parquet(). pandas delegates that to pyarrow.
+# Nothing does `import pyarrow`, so a dependency scanner will miss it -- omit it and the
+# pipeline fails at the first table write with a confusing engine error.
+pyarrow==25.0.1
+
+
+# ---- xxhash: OPTIONAL TO IMPORT, REQUIRED FOR REPRODUCIBILITY ------------------------
+# hashing.py falls back to hashlib.blake2b if xxhash is missing, so the pipeline still
+# runs. But the fallback produces COMPLETELY DIFFERENT hash values, which means:
+#
+#   * content_hash values are not comparable between the two machines
+#   * duplicate grouping, canonical selection and splits all change
+#   * two people would build different tables from identical inputs and both look fine
+#
+# hashing.HASH_NAME records which was used. Install xxhash -- treat this as required.
+xxhash==4.0.1
+
+
+# ---- opencv: HEADLESS build on purpose ------------------------------------------------
+# Used for the DCT in the perceptual hash, and for drawing the human-review images.
+# The headless build is correct for a server with no display: plain opencv-python pulls
+# in GUI libraries (libGL etc.) that are absent on this VM and fail at import.
+opencv-python-headless==5.0.0.93
+
+
+# ---- pillow ---------------------------------------------------------------------------
+# Reads photographs straight out of zip members. Its JPEG draft() mode -- decoding at
+# 1/8 scale nearly for free -- is what takes the perceptual-hash pass over 82,099
+# photographs from hours down to about a minute.
+pillow==12.3.0
+
+
+# =====================================================================================
+# NOT LISTED, ON PURPOSE
+# =====================================================================================
+# pytest        The two test files run standalone:
+#                   python training/tests/test_frame_order.py
+#                   python training/tests/test_transform_points.py
+#               They are written with a plain __main__ block precisely so they work on a
+#               machine without pytest, which is the case on this VM.
+#
+# rasterio,     Used by the ENGINE benchmarks (bench_*.py at the repo root), not by
+# scikit-learn  preprocessing. They live in the root requirements.txt.
+# =====================================================================================
