@@ -112,11 +112,28 @@ MANIFEST_COLUMNS: dict[str, str] = {
 
     # ---- FILLED IN BY LATER STEPS ---------------------------------------------------
     # These start empty. Each later script fills one in.
+    # ---- THE THREE SEPARATE IDENTITIES ---------------------------------------------
+    # One overloaded "family" column conflated three different questions and produced a
+    # single component holding 58% of the corpus. They are now kept apart, because they are
+    # evidenced to different degrees and enforce different rules.
+    #
+    #   content_group_id  "these are literally the same picture"   EVIDENCED (bytes/pHash)
+    #   lineage_group_id  "these are derived from the same source" EVIDENCED (mosaic/flight)
+    #   field_event_id    "these are one field on one visit"       REVIEWED provenance only
+    #   site_id           "this is one physical place"             REVIEWED provenance only
+    #
+    # Enforcement: one canonical image per content group (aliases are never sampled, so they
+    # cannot leak); every lineage group in exactly one split; every field event in exactly
+    # one split; a sealed site appears nowhere else.
+
     "farm": "string",             # step 3, from the spreadsheet a person fills
     "field": "string",            # step 3
     "season": "string",           # step 3
-    "site_id": "string",          # step 3 -- a stable name for a physical place
-    "leakage_group_id": "string", # step 3 -- which "family" of related photos this belongs to
+    "site_id": "string",          # step 3 -- a stable name for a physical place.
+                                  # STAYS EMPTY when unknown. There is deliberately no
+                                  # dataset-name fallback: unknown provenance must remain
+                                  # unknown, and a guessed site cannot enter calibration,
+                                  # confirmation or the sealed set.
     "split": "string",            # step 6 -- practice set or exam set
     "exhaustive": "string",       # "yes"/"no"/"unknown" -- is EVERY object in this photo
                                   # marked? Only "yes" photos can be used for scoring.
@@ -145,6 +162,77 @@ INSTANCE_COLUMNS: dict[str, str] = {
     "points_wkt": "string",       # for polygons: the full outline, saved as text so nothing
                                   # is lost. Empty for simple dots and boxes.
     "is_crowd": "int64",          # 1 would mean "a blob of many objects, not one" (unused yet)
+}
+
+
+# =====================================================================================
+# TABLE 2b: groups -- ONE ROW PER PHOTOGRAPH, ALL GROUPING IDENTITIES
+# =====================================================================================
+# Grouping used to be a single overloaded "family" column on the manifest. That conflated
+# identities evidenced to very different degrees and produced one component holding 58% of
+# the corpus. They are now separate columns in their own table, and the manifest carries none
+# of them -- so there is exactly one place that answers "what is grouped with what".
+#
+# EVIDENCE STRENGTH, strongest first. This ordering is the point of the table:
+#
+#   content_group_id        identical BYTES.                        PROVEN
+#   visual_group_id         pHash within threshold, NOT audited.    AUTOMATIC, unverified
+#   lineage_group_id        same mosaic / flight / tile overlap.    EVIDENCED (filename)
+#   source_event_proxy_id   inferred "one capture event".           PROXY, filename-derived
+#   field_event_id          one field on one visit.                 REVIEWED PROVENANCE ONLY
+#   site_id                 one physical place.                     REVIEWED PROVENANCE ONLY
+#
+# Only the last two may back a production field-held-out claim. Everything above them
+# supports a SOURCE-GROUP benchmark and must be labelled as such.
+GROUP_COLUMNS: dict[str, str] = {
+    "image_uid": "string",
+
+    # ---- pixel identity -------------------------------------------------------------
+    # Exact bytes only. pHash is deliberately NOT folded in here: an automatic threshold is
+    # not proof, and discarding an unaudited match as a duplicate would throw away real data.
+    "content_group_id": "string",
+    "is_canonical": "int64",        # 1 = the representative whose pixels are sampled
+    "canonical_uid": "string",      # which image that is (self, when is_canonical = 1)
+
+    # ---- unaudited visual similarity -- a SPLIT CONSTRAINT, never a discard -----------
+    "visual_group_id": "string",
+
+    # ---- derivation -----------------------------------------------------------------
+    "lineage_group_id": "string",
+
+    # ---- capture event: inferred vs reviewed. NEVER conflate these two. ---------------
+    "source_event_proxy_id": "string",   # from filename mosaics/flights. A PROXY.
+    "field_event_id": "string",          # reviewed provenance ONLY. Empty until then.
+    "site_id": "string",                 # reviewed provenance ONLY. Empty until then.
+
+    # ---- what splitting actually allocates -------------------------------------------
+    # The connected component of every constraint above. One split per component.
+    "alloc_component_id": "string",
+
+    "quarantined": "int64",
+    "quarantine_reason": "string",
+}
+
+
+# =====================================================================================
+# TABLE 2c: observations -- ANNOTATIONS REMAPPED ONTO CANONICAL PIXELS
+# =====================================================================================
+# Canonicalisation is about PIXELS, not about annotations. Two byte-identical files may
+# carry completely different annotation work: measured on this corpus, 2,102 content groups
+# have annotations ONLY on a non-canonical copy (118,006 instances), and 343,254 annotation
+# rows sit on aliases overall. Selecting a canonical image and dropping its aliases would
+# silently discard all of that.
+#
+# So annotations are remapped onto the canonical image rather than discarded, and the
+# original context is preserved so a disagreement can be adjudicated rather than guessed.
+OBSERVATION_COLUMNS: dict[str, str] = {
+    "instance_id": "string",
+    "canonical_uid": "string",      # the pixels this observation now refers to
+    "source_image_uid": "string",   # the file it was actually drawn on
+    "content_group_id": "string",
+    "task_name": "string",          # WHICH annotation job -- needed for task-scoped ontology
+    "label_raw": "string",
+    "conflict": "int64",            # 1 = this content group's copies disagree on labels
 }
 
 

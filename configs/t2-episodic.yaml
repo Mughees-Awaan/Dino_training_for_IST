@@ -1,0 +1,29 @@
+# T2 -- click-task training from the frozen stock backbone.
+# Values are the plan's defaults; nothing here has been tuned on real episodes yet,
+# because episodes do not carry negative clicks.
+run: t2-episodic
+seed: 0
+
+backbone:
+  name: vit_small_patch16_224.dino
+  out_layers: [-2, -1]     # last TWO blocks: measured +0.023 / +0.006 F1, free
+  frozen: false            # T2 unfreezes; T0 baseline keeps this true
+
+ridge:
+  lam: 0.01                # verified stable 1e-4 .. 1e-1 across 5-40 clicks
+  tau: 0.07
+
+optim:
+  lr: 1.0e-5               # small: we are nudging a pretrained backbone, not training one
+  steps: 8000
+  clip_grad: 1.0           # the ridge can amplify gradients on a near-singular support
+
+episodes:
+  k_support: 5             # NOT 10. Measured knee is ~5 and pea DEGRADES beyond it:
+                           # F1 0.844 @5 -> 0.836 @10 -> 0.823 @20 -> 0.799 @40 -> 0.748 @80
+  k_query: 20
+  require_negatives: true  # ⛔ current episodes fail this
+
+gates:
+  click_dependence_min: 0.10   # correct clicks must beat shuffled by this much
+  metric: detection_f1         # AUC may be logged, never gated on

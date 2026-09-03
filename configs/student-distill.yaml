@@ -1,0 +1,19 @@
+# Student distillation. Three ARMS, not one run -- without S-B and S-U the KD claim
+# cannot be falsified.
+run: student-distill
+seed: 0
+
+arms:
+  S-E: {kd: true,  episodic: true,  teacher: agridino}   # the claim
+  S-B: {kd: false, episodic: true,  teacher: null}       # would it work without KD?
+  S-U: {kd: true,  episodic: true,  teacher: untrained}  # is it KD, or just a teacher-shaped prior?
+
+kd_weight_sweep: [0.2, 0.5, 1.0]   # the spec moved this 0.2->1.0 and never ablated it
+
+model:
+  out_dim: 384
+  freeze_batchnorm: true    # product runs one tile at a time; BN stats would be wrong
+
+gates:
+  retain_teacher_margin: 0.50   # student must keep >=50% of the teacher's margin
+  beat_baseline_f1: 0.01        # S-E must beat S-B by >= this
